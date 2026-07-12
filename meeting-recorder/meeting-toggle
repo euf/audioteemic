@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# meeting-toggle — хелпер для хоткея ⌃⌥⌘R. ИСХОДНИК (коммитится); при установке копируется
+# в ~/.local/bin/meeting-toggle — на ЛОКАЛЬНЫЙ диск, ВНЕ iCloud, потому что Shortcuts не
+# может стабильно исполнить .sh из iCloud-папки vault'а (вытеснение файла/сэндбокс →
+# интермиттентный "Operation not permitted"). Хоткей вызывает именно ~/.local/bin-копию.
+#
+# Логика: флипнуть флаг manual-on + дёрнуть launchd-воркер (com.eugene.zoom-recorder).
+# Сам ffmpeg запускает воркер в персистентном контексте (переживает завершение хоткея).
+# МГНОВЕННОЕ уведомление шлём здесь же (по флипу) — иначе фидбэк ждёт медленной работы
+# воркера (сеть-календарь на старте, мерж на стопе). Воркер потом заменит его же (-group).
+# Зеркалит record-meeting.sh manual-toggle; при правке логики — обновить обе копии.
+S="$HOME/.local/state/meeting-recorder"
+TN="/opt/homebrew/bin/terminal-notifier"
+mkdir -p "$S"
+if [[ -e "$S/manual-on" ]]; then
+  rm -f "$S/manual-on"
+  [[ -x "$TN" ]] && "$TN" -title "■ Останавливаю запись…" -message "финализация + мерж" -group meeting-recorder >/dev/null 2>&1
+else
+  : > "$S/manual-on"
+  [[ -x "$TN" ]] && "$TN" -title "● Запускаю запись…" -message "старт" -group meeting-recorder >/dev/null 2>&1
+fi
+# kickstart В ФОНЕ: без этого launchctl блокируется до конца тика воркера (~сек), и Shortcuts
+# «крутится». Фоном → хелпер возвращается мгновенно, уведомление выше уже показано.
+( launchctl kickstart "gui/$(id -u)/com.eugene.zoom-recorder" >/dev/null 2>&1 & ) >/dev/null 2>&1

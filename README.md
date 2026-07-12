@@ -1,5 +1,14 @@
 # AudioTee
 
+> **Fork additions (`euf/audioteemic`):**
+> - **`--mic`** — co-clock the built-in mic **and** the system tap in one aggregate device
+>   and emit interleaved stereo `[L=mic, R=system]` locked on one clock (no cross-recorder
+>   drift). Also `--input-name <substr>` and `--list-devices`. See the commits on the
+>   `mic-coclock` branch.
+> - **[`meeting-recorder/`](meeting-recorder/)** — a full Fellow-backup Zoom recorder built
+>   on `--mic` (launchd trigger, hotkey, stable code-signing, one-shot `setup.sh`). Start
+>   there to reproduce the setup on a new Mac.
+
 **⚠️ API Instability Warning: The AudioTee API is unstable at present and subject to change without notice.**
 
 AudioTee captures your Mac's system audio output and writes it in PCM encoded chunks to `stdout` at regular intervals. All logging and metadata information is written to `stderr`, meaning at its simplest you can capture whatever's playing through your speakers to a file like this:

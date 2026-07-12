@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- LaunchAgent template. setup.sh substitutes __WATCH_SH__ and __STATE__ and installs
+     the result to ~/Library/LaunchAgents/com.eugene.zoom-recorder.plist. Polls for a Zoom
+     meeting every 5s via zoom-meeting-watch.sh. The Label must match the one kickstarted
+     from record-meeting.sh (manual-toggle) and meeting-toggle. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.eugene.zoom-recorder</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__WATCH_SH__</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>5</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <!-- Recorded ffmpeg is backgrounded from a short tick; without this launchd kills it
+       when the tick ends. true = children outlive the job invocation. -->
+  <key>AbandonProcessGroup</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__STATE__/launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>__STATE__/launchd.err</string>
+</dict>
+</plist>
