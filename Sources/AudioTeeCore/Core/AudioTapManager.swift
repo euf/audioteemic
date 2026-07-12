@@ -191,10 +191,22 @@ public class AudioTapManager {
 
     // Hard post-condition: the tap must actually surface, otherwise we would
     // silently record mic-only (system audio missing) — the worst failure for
-    // a meeting recorder. Fail loudly instead.
-    guard tapIsSurfacing(deviceID) else {
+    // a meeting recorder. But surfacing is ASYNCHRONOUS: SetPropertyData above
+    // returns success before the aggregate finishes recomposing its input
+    // stream configuration, so a single immediate read races and can miss the
+    // tap. Poll for up to ~1s (this is exactly why AudioFormatManager polls
+    // device readiness too). Fail loudly only if it never appears.
+    var surfaced = false
+    for _ in 0..<40 {
+      if tapIsSurfacing(deviceID) {
+        surfaced = true
+        break
+      }
+      Thread.sleep(forTimeInterval: 0.025)
+    }
+    guard surfaced else {
       AudioTeeLogging.logger.error(
-        "Tap did not surface as an aggregate input stream after assignment")
+        "Tap did not surface as an aggregate input stream within timeout")
       throw AudioTeeError.tapAssignmentFailed(kAudioHardwareUnspecifiedError)
     }
   }
