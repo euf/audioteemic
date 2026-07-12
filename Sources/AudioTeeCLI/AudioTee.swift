@@ -9,6 +9,9 @@ struct AudioTee {
   var stereo: Bool = false
   var sampleRate: Double?
   var chunkDuration: Double = 0.2
+  var micDual: Bool = false
+  var inputName: String?
+  var listDevices: Bool = false
 
   init() {}
 
@@ -43,6 +46,16 @@ struct AudioTee {
       name: "exclude-processes", help: "Process IDs to exclude (space-separated)")
     parser.addFlag(name: "mute", help: "Mute processes being tapped")
     parser.addFlag(name: "stereo", help: "Records in stereo")
+    parser.addFlag(
+      name: "mic",
+      help:
+        "Co-clock the built-in mic with system audio: output stereo [L=mic, R=system] from one aggregate clock (no drift)"
+    )
+    parser.addOption(
+      name: "input-name",
+      help: "With --mic, pick input device by name substring (default: built-in mic)")
+    parser.addFlag(
+      name: "list-devices", help: "List input devices (name + UID) and exit")
     parser.addOption(
       name: "sample-rate",
       help: "Target sample rate (8000, 16000, 22050, 24000, 32000, 44100, 48000)")
@@ -62,6 +75,9 @@ struct AudioTee {
       audioTee.stereo = parser.getFlag("stereo")
       audioTee.sampleRate = try parser.getOptionalValue("sample-rate", as: Double.self)
       audioTee.chunkDuration = try parser.getValue("chunk-duration", as: Double.self)
+      audioTee.micDual = parser.getFlag("mic")
+      audioTee.inputName = try parser.getOptionalValue("input-name", as: String.self)
+      audioTee.listDevices = parser.getFlag("list-devices")
 
       // Validate
       try audioTee.validate()
@@ -95,7 +111,30 @@ struct AudioTee {
   func run() throws {
     setupSignalHandlers()
 
+    if listDevices {
+      for d in AudioDeviceEnumerator.inputDevices() {
+        print("\(d.isBuiltIn ? "*" : " ") \(d.name)  [\(d.uid)]")
+      }
+      print("(* = built-in; used by default with --mic)", to: &standardError)
+      return
+    }
+
     AudioTeeLogging.logger.info("Starting AudioTee...")
+
+    // Resolve the input device up front so we fail fast with a clear message.
+    var inputDeviceUID: String? = nil
+    if micDual {
+      guard let dev = AudioDeviceEnumerator.resolveInput(nameSubstring: inputName) else {
+        AudioTeeLogging.logger.error(
+          "Could not resolve input device for --mic",
+          context: ["input_name": inputName ?? "(built-in)"])
+        throw ExitCode.failure
+      }
+      inputDeviceUID = dev.uid
+      AudioTeeLogging.logger.info(
+        "Co-clocking mic with system audio",
+        context: ["mic_name": dev.name, "mic_uid": dev.uid, "built_in": String(dev.isBuiltIn)])
+    }
 
     // Validate chunk duration
     guard chunkDuration > 0 && chunkDuration <= 5.0 else {
@@ -108,16 +147,18 @@ struct AudioTee {
     // Convert include/exclude processes to TapConfiguration format
     let (processes, isExclusive) = convertProcessFlags()
 
+    // In dual mode we capture the tap in stereo so it is distinguishable from
+    // the (mono) mic by channel count, then downmix it to mono for R ourselves.
     let tapConfig = TapConfiguration(
       processes: processes,
       muteBehavior: mute ? .muted : .unmuted,
       isExclusive: isExclusive,
-      isMono: !stereo
+      isMono: micDual ? false : !stereo
     )
 
     let audioTapManager = AudioTapManager()
     do {
-      try audioTapManager.setupAudioTap(with: tapConfig)
+      try audioTapManager.setupAudioTap(with: tapConfig, inputDeviceUID: inputDeviceUID)
     } catch AudioTeeError.pidTranslationFailed(let failedPIDs) {
       AudioTeeLogging.logger.error(
         "Failed to translate process IDs to audio objects",
@@ -140,7 +181,7 @@ struct AudioTee {
     let outputHandler = BinaryAudioOutputHandler()
     let recorder = try AudioRecorder(
       deviceID: deviceID, outputHandler: outputHandler, convertToSampleRate: sampleRate,
-      chunkDuration: chunkDuration)
+      chunkDuration: chunkDuration, dualMode: micDual)
     try recorder.startRecording()
 
     // Run until the run loop is stopped (by signal handler)

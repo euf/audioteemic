@@ -23,18 +23,31 @@ public class AudioTapManager {
     }
   }
 
-  /// Sets up the audio tap and aggregate device
-  public func setupAudioTap(with config: TapConfiguration) throws {
-    AudioTeeLogging.logger.debug("Setting up audio tap manager")
+  /// Sets up the audio tap and aggregate device.
+  ///
+  /// When `inputDeviceUID` is non-nil, that input device (e.g. the built-in
+  /// mic) is added as a sub-device of the same private aggregate and made the
+  /// clock master; the system tap is drift-compensated to it. The result is a
+  /// single IOProc that delivers mic + system audio time-aligned on one clock
+  /// (no cross-recorder drift). The mic — not the tap — is master on purpose:
+  /// its hardware clock is stable, whereas the tap follows the output device,
+  /// which changes when AirPods connect/disconnect mid-call.
+  public func setupAudioTap(with config: TapConfiguration, inputDeviceUID: String? = nil) throws {
+    AudioTeeLogging.logger.debug(
+      "Setting up audio tap manager",
+      context: ["input_device_uid": inputDeviceUID ?? "(none)"])
 
     tapID = try createSystemAudioTap(with: config)
-    deviceID = try createAggregateDevice()
+    deviceID = try createAggregateDevice(inputDeviceUID: inputDeviceUID)
 
     guard let tapID = tapID, let deviceID = deviceID else {
       throw AudioTeeError.setupFailed
     }
 
-    try addTapToAggregateDevice(tapID: tapID, deviceID: deviceID)
+    // Drift-compensate the tap only when it is NOT the sole clock source, i.e.
+    // when a master sub-device (the mic) is present.
+    try addTapToAggregateDevice(
+      tapID: tapID, deviceID: deviceID, driftCompensate: inputDeviceUID != nil)
 
     AudioTeeLogging.logger.debug("Audio tap manager setup complete")
   }
@@ -100,14 +113,30 @@ public class AudioTapManager {
     return tapID
   }
 
-  private func createAggregateDevice() throws -> AudioObjectID {
+  private func createAggregateDevice(inputDeviceUID: String?) throws -> AudioObjectID {
     let uid = UUID().uuidString
+
+    // With a mic sub-device present, list it and make it clock master. Its own
+    // drift compensation stays off (it defines the clock); the tap is
+    // compensated in addTapToAggregateDevice.
+    var subDeviceList: [[String: Any]] = []
+    var masterKey: Any = 0
+    if let inputUID = inputDeviceUID {
+      subDeviceList = [
+        [
+          kAudioSubDeviceUIDKey as String: inputUID,
+          kAudioSubDeviceDriftCompensationKey as String: 0,
+        ]
+      ]
+      masterKey = inputUID
+    }
+
     let description =
       [
-        kAudioAggregateDeviceNameKey: "audiotee-aggregate-device",
+        kAudioAggregateDeviceNameKey: "audioteemic-aggregate-device",
         kAudioAggregateDeviceUIDKey: uid,
-        kAudioAggregateDeviceSubDeviceListKey: [] as CFArray,
-        kAudioAggregateDeviceMasterSubDeviceKey: 0,
+        kAudioAggregateDeviceSubDeviceListKey: subDeviceList,
+        kAudioAggregateDeviceMasterSubDeviceKey: masterKey,
         kAudioAggregateDeviceIsPrivateKey: true,
         kAudioAggregateDeviceIsStackedKey: false,
       ] as [String: Any]
@@ -124,7 +153,9 @@ public class AudioTapManager {
     return deviceID
   }
 
-  private func addTapToAggregateDevice(tapID: AudioObjectID, deviceID: AudioObjectID) throws {
+  private func addTapToAggregateDevice(
+    tapID: AudioObjectID, deviceID: AudioObjectID, driftCompensate: Bool
+  ) throws {
     // Get the tap's UID
     var propertyAddress = getPropertyAddress(selector: kAudioTapPropertyUID)
     var propertySize = UInt32(MemoryLayout<CFString>.stride)
@@ -133,12 +164,21 @@ public class AudioTapManager {
       AudioObjectGetPropertyData(tapID, &propertyAddress, 0, nil, &propertySize, tapUID)
     }
 
-    // Add the tap to the aggregate device
-    propertyAddress = getPropertyAddress(
-      selector: kAudioAggregateDevicePropertyTapList)
+    // Add the tap to the aggregate device using the plain-UID array form.
+    //
+    // We do NOT use the dictionary form with kAudioSubTapDriftCompensationKey:
+    // on macOS 26 it silently prevents the tap from surfacing as an input
+    // stream at all (verified — tried both Int and kCFBooleanTrue values). It
+    // isn't needed anyway: the mic and tap are composited into ONE aggregate
+    // whose master clock is the mic, and the IOProc delivers both streams in a
+    // single callback with equal frame counts. Every output frame therefore
+    // pairs mic[i] with tap[i] from the same clock cycle, so the cumulative
+    // L↔R drift of the old two-process design cannot occur. `driftCompensate`
+    // is retained only to gate the post-condition check below.
+    _ = driftCompensate
+    propertyAddress = getPropertyAddress(selector: kAudioAggregateDevicePropertyTapList)
     let tapArray = [tapUID] as CFArray
     propertySize = UInt32(MemoryLayout<CFArray>.stride)
-
     let status = withUnsafePointer(to: tapArray) { ptr in
       AudioObjectSetPropertyData(deviceID, &propertyAddress, 0, nil, propertySize, ptr)
     }
@@ -148,5 +188,34 @@ public class AudioTapManager {
         "Failed to add tap to aggregate device", context: ["status": String(status)])
       throw AudioTeeError.tapAssignmentFailed(status)
     }
+
+    // Hard post-condition: the tap must actually surface, otherwise we would
+    // silently record mic-only (system audio missing) — the worst failure for
+    // a meeting recorder. Fail loudly instead.
+    guard tapIsSurfacing(deviceID) else {
+      AudioTeeLogging.logger.error(
+        "Tap did not surface as an aggregate input stream after assignment")
+      throw AudioTeeError.tapAssignmentFailed(kAudioHardwareUnspecifiedError)
+    }
+  }
+
+  /// True if the aggregate exposes more than the mic's single input channel,
+  /// i.e. the tap's stream is present.
+  private func tapIsSurfacing(_ deviceID: AudioObjectID) -> Bool {
+    var addr = getPropertyAddress(
+      selector: kAudioDevicePropertyStreamConfiguration, scope: kAudioDevicePropertyScopeInput)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(deviceID, &addr, 0, nil, &size) == noErr, size > 0 else {
+      return false
+    }
+    let raw = UnsafeMutableRawPointer.allocate(
+      byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+    defer { raw.deallocate() }
+    guard AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, raw) == noErr else {
+      return false
+    }
+    let abl = UnsafeMutableAudioBufferListPointer(raw.assumingMemoryBound(to: AudioBufferList.self))
+    let total = abl.reduce(0) { $0 + Int($1.mNumberChannels) }
+    return total >= 2
   }
 }
