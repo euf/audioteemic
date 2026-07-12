@@ -18,6 +18,12 @@ public class AudioRecorder {
   private var loggedDualLayout = false
   private var interleaveScratch: UnsafeMutablePointer<Float>?
   private var interleaveScratchFrames = 0
+  // Frame-lock diagnostics: if mic and tap deliver equal frame counts every
+  // callback, the two streams cannot accumulate a relative offset (no drift).
+  private var dbgMicFrames = 0
+  private var dbgTapFrames = 0
+  private var dbgCallbacks = 0
+  private var dbgMismatchCallbacks = 0
 
   /// The audio format this recorder produces (after any conversion).
   public var outputFormat: AudioStreamBasicDescription {
@@ -225,6 +231,10 @@ public class AudioRecorder {
     let tapCh = Int(tap.mNumberChannels)
     let micFrames = Int(mic.mDataByteSize) / (4 * micCh)
     let tapFrames = Int(tap.mDataByteSize) / (4 * tapCh)
+    dbgCallbacks += 1
+    dbgMicFrames += micFrames
+    dbgTapFrames += tapFrames
+    if micFrames != tapFrames { dbgMismatchCallbacks += 1 }
     let frames = min(micFrames, tapFrames)
     guard frames > 0 else { return noErr }
 
@@ -286,6 +296,17 @@ public class AudioRecorder {
   }
 
   public func stopRecording() {
+    if dualMode {
+      AudioTeeLogging.logger.info(
+        "Dual frame-lock summary",
+        context: [
+          "callbacks": String(dbgCallbacks),
+          "mic_frames": String(dbgMicFrames),
+          "tap_frames": String(dbgTapFrames),
+          "frame_delta": String(dbgMicFrames - dbgTapFrames),
+          "mismatch_callbacks": String(dbgMismatchCallbacks),
+        ])
+    }
     if !dualMode {
       processAudioBuffer()
     }
