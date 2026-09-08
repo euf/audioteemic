@@ -48,7 +48,7 @@ bash meeting-recorder/coclock-accept.sh   # expect: frame_delta=0 → PASS
 | `sign-audiotee.sh` | re-apply the stable code-signing identity — **run after every `swift build`** |
 | `setup.sh` | one-shot bootstrap (build → sign → install → launchd) |
 | `calendar-title.py` | resolves the current meeting's title for the filename (optional) |
-| `fetch-calendar.py` | ICS fetcher used by `calendar-title.py`; reads the URL from `~/.config/calendar-sync/ics_url` |
+| `fetch-calendar.py` | ICS fetcher used by `calendar-title.py`; reads the URL from `~/.config/calendar-sync/ics_url`, your own username from `self` |
 | `coclock-accept.sh` + `xcorr-drift.py` | acceptance test: proves no drift (frame-lock) |
 | `calls-reconcile.py` | (vault-specific, optional) flags recordings Fellow never transcribed |
 
@@ -59,7 +59,9 @@ bash meeting-recorder/coclock-accept.sh   # expect: frame_delta=0 → PASS
 - **launchd agent:** `~/Library/LaunchAgents/com.eugene.zoom-recorder.plist`
 - **Recordings:** `~/Library/Mobile Documents/com~apple~CloudDocs/Meeting Recordings/` (iCloud) or `~/Recordings/meeting-backups/`; override with `MEETING_REC_OUTDIR`
 - **Scripts:** this folder (run from the clone), or copied into your own dotfiles/vault
-- **Calendar secret:** `~/.config/calendar-sync/ics_url` (private ICS URL, local only)
+- **Calendar secret:** `~/.config/calendar-sync/ics_url` (private ICS URL, local only);
+  optional `~/.config/calendar-sync/self` — your own username, so you are skipped in the
+  attendee list (or `CALENDAR_SELF`)
 
 ## Signing & permissions (the fiddly part)
 

@@ -94,6 +94,10 @@ Remaining MANUAL steps (macOS blocks scripts from doing these):
 3. CALENDAR NAMING (optional) — filenames get the meeting title if you put your
    private ICS URL into:  ~/.config/calendar-sync/ics_url
    Otherwise files are named by date-time only.
+   Put your own username (the part before @ in the calendar invite) into
+   ~/.config/calendar-sync/self, or set CALENDAR_SELF, so you are not listed
+   among the attendees and your own DECLINED replies hide the meeting. Left
+   empty, nobody is filtered out.
 
 After any 'swift build': re-run  bash $BUNDLE/sign-audiotee.sh
 EOF
