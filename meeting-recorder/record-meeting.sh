@@ -45,6 +45,8 @@ TSFILE="$STATE/target-ts"        # префикс имени "YYYY-MM-DD, HH-MM"
 LOG="$STATE/latest.log"
 AUDIOTEE="${MEETING_REC_AUDIOTEE:-$HOME/.local/bin/audiotee}"
 # Уведомления шлём через бандл с иконкой-микрофоном (иначе слева иконка Терминала). Фолбэк — обычный TN.
+# Тот же отправитель, что у meeting-toggle: -group вытесняет прежнее уведомление только
+# внутри одного bundle-id. Откуда берётся бандл — README, «Где что лежит».
 _TN_MIC="$HOME/Library/Application Support/meeting-recorder/Recorder.app/Contents/MacOS/terminal-notifier"
 [[ -x "$_TN_MIC" ]] || _TN_MIC="/opt/homebrew/bin/terminal-notifier"
 TN="${MEETING_REC_NOTIFIER:-$_TN_MIC}"
