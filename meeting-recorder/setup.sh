@@ -12,6 +12,13 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 BUNDLE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$BUNDLE/.." && pwd)"                 # audiotee repo root (has Package.swift)
+# Обёртки (meeting-toggle, zoom-meeting-watch.sh, record-meeting.sh) живут в вольте —
+# launchd указывает туда, там же они и правятся. Копии в этом репозитории отстали
+# (снимок 12.07.2026), и раньше setup.sh затирал ими рабочие: install -m755 писал
+# июльский meeting-toggle в ~/.local/bin, а плист переводил на июльский watcher.
+# Есть вольт — ставим из него; нет (чистая машина, только этот репозиторий) — из снимка.
+WRAP="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/EF Obsidian Vault/scripts/record"
+[[ -f "$WRAP/meeting-toggle" ]] || WRAP="$BUNDLE"
 STATE="$HOME/.local/state/meeting-recorder"
 SIGNDIR="$STATE/signing"
 BIN_DIR="$HOME/.local/bin"
@@ -62,11 +69,11 @@ bash "$BUNDLE/sign-audiotee.sh" "$BIN_DIR/audiotee" >/dev/null   # re-sign IN PL
 "$BIN_DIR/audiotee" --list-devices >/dev/null && echo "  binary runs ✓"
 
 step "Installing hotkey helper → $BIN_DIR/meeting-toggle…"
-install -m755 "$BUNDLE/meeting-toggle" "$BIN_DIR/meeting-toggle"
+install -m755 "$WRAP/meeting-toggle" "$BIN_DIR/meeting-toggle"
 
 step "Installing launchd agent ($LABEL)…"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-sed "s#__WATCH_SH__#$BUNDLE/zoom-meeting-watch.sh#; s#__STATE__#$STATE#g" \
+sed "s#__WATCH_SH__#$WRAP/zoom-meeting-watch.sh#; s#__STATE__#$STATE#g" \
     "$BUNDLE/com.eugene.zoom-recorder.plist.template" > "$PLIST"
 launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST" && echo "  loaded ✓"
