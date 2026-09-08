@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # coclock-accept.sh — acceptance test for the co-clock capture (audiotee --mic).
 #
 # Records ONE co-clocked stereo clip while YOU play music on the speakers and
@@ -8,7 +8,7 @@
 # fixed recording window, then SIGINT and a forced kill -9 fallback so it can
 # never wedge. The audiotee log is always shown so a failure is self-diagnosing.
 #
-#   bash scripts/record/coclock-accept.sh [seconds]   (default 90)
+#   bash "$VAULT/scripts/record/coclock-accept.sh" [seconds]   (default 90)
 set -uo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 

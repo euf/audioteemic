@@ -1,5 +1,8 @@
 # meeting-recorder — Fellow-backup Zoom recorder (co-clock, free/OSS)
 
+> Published **snapshot** of the scripts I run daily, refreshed from my working copy.
+> Edit it there, not here: changes made in this directory are overwritten on the next sync.
+
 A macOS meeting recorder used as **insurance** for a Fellow bot: when Fellow fails to
 transcribe a call, you have a local stereo recording to re-upload. Free, no cloud, **no
 BlackHole** (output routing untouched → AirPods↔speakers auto-switch keeps working).

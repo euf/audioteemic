@@ -13,6 +13,8 @@
     в хвосте A, а B уже началась — победит B).
 Сеть недоступна / URL нет / нет совпадений → пустая строка (graceful, имя по времени).
 """
+from __future__ import annotations  # `Path | None` в сигнатурах — иначе нужен 3.10+
+
 import importlib.util
 import os
 import re
