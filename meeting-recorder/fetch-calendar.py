@@ -8,7 +8,7 @@
 отдельных occurrence'ов (RECURRENCE-ID) в реальные даты окна, с учётом таймзон. Это чинит
 класс багов, из-за которых из .md пропадали/дублировались повторяющиеся встречи.
 
-Зависимости живут в изолированном venv (~/.config/calendar-sync/venv). Скрипт сам создаёт
+Зависимости живут в изолированном venv (~/.config/calendar-sync/venv-X.Y, по minor-версии Python). Скрипт сам создаёт
 его при первом запуске и подкладывает site-packages в sys.path ТЕКУЩЕГО интерпретатора —
 поэтому работает и как самостоятельный запуск (SessionStart-хук), и при импорте как модуля
 (scripts/record/calendar-title.py делает fetch_events() в своём процессе). Голый `python3`
@@ -56,7 +56,13 @@ MAX_ATTENDEES = 8
 _ICS_URL_FILE = Path.home() / ".config" / "calendar-sync" / "ics_url"
 
 # --- Изолированный venv c icalendar + recurring_ical_events --------------------------
-_VENV_DIR = Path.home() / ".config" / "calendar-sync" / "venv"
+# Каталог venv ключуется minor-версией Python: один общий каталог делили
+# /usr/bin/python3 (3.9, минимальный PATH под launchd) и brew-python (3.14) — при этом
+# `venv/bin/python3` остаётся симлинком на того, кто создал каталог первым, и `bin/pip`
+# второго интерпретатора молча ставит пакеты не в свой lib/pythonX.Y (07.09.2026 так
+# пропали названия встреч из календаря в именах записей).
+_VENV_DIR = (Path.home() / ".config" / "calendar-sync" /
+             f"venv-{sys.version_info.major}.{sys.version_info.minor}")
 _VENV_PKGS = ["icalendar", "recurring_ical_events", "python-dateutil", "tzdata"]
 # SessionStart синхронный: без таймаута офлайн-машина (или недоступный PyPI)
 # подвешивает venv/pip-install на неопределённое время и с ним — старт сессии
@@ -83,8 +89,9 @@ def _ensure_deps() -> None:
         pass
     site = _venv_site()
     try:
-        if not site.exists():
-            # venv нет (или пересоздан под другой minor Python) → строим с нуля.
+        if not (site / "icalendar").exists():
+            # Проверяем пакет, а не каталог: пустой site-packages создаёт сам `venv`,
+            # и `site.exists()` навсегда заглушил бы доустановку.
             subprocess.run([sys.executable, "-m", "venv", str(_VENV_DIR)], check=True,
                            timeout=_PIP_TIMEOUT,
                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
