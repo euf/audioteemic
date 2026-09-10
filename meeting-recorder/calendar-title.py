@@ -45,14 +45,18 @@ def sanitize(s: str) -> str:
 def main() -> None:
     fetchcal = _find_fetchcal()
     if fetchcal is None:
-        print(""); return                        # нет fetch-calendar.py → имя по дате-времени
+        print("[calendar-title] fetch-calendar.py не найден", file=sys.stderr)
+        print(""); return                        # → имя по дате-времени
     try:
         spec = importlib.util.spec_from_file_location("fetchcal", fetchcal)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)             # top-level читает ICS_URL; сеть — в fetch_events
         events = mod.fetch_events()
         tz = mod.LOCAL_TZ
-    except BaseException:                        # SystemExit тоже (нет ~/.config/…/ics_url на новой машине)
+    except BaseException as exc:                 # SystemExit тоже (нет ~/.config/…/ics_url на новой машине)
+        # stdout — контракт (пустая строка = имя по дате-времени), причину пишем в stderr:
+        # немой отказ здесь три недели уносил названия встреч из имён записей (07.09.2026).
+        print(f"[calendar-title] {type(exc).__name__}: {exc}", file=sys.stderr)
         print(""); return
 
     now = datetime.now(tz)

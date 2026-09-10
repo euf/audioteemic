@@ -122,7 +122,11 @@ do_start() {
   # ts сохраняем отдельно — на стопе по нему вставим "(Nm)" между временем и названием.
   printf '%s\n' "$ts" > "$TSFILE"
   printf '%s\n' "$OUTDIR/${ts}.m4a" > "$NAMEFILE"
-  ( t="$(/usr/bin/python3 "$DIR/calendar-title.py" 2>/dev/null || true)"; [[ -n "$t" ]] && printf '%s\n' "$OUTDIR/${ts} ${t}.m4a" > "$NAMEFILE" ) &
+  # stderr в лог, а не в /dev/null: пустое название — штатный исход (нет встречи), но и
+  # признак поломки (см. 07.09.2026, сломанный venv), различить их можно только по причине.
+  ( t="$(/usr/bin/python3 "$DIR/calendar-title.py" 2>>"$LOG" || true)"
+    if [[ -n "$t" ]]; then printf '%s\n' "$OUTDIR/${ts} ${t}.m4a" > "$NAMEFILE"
+    else echo "$(date '+%F %T') calendar-title: название не определено" >>"$LOG"; fi ) &
   echo "recording (co-clock mic+sys → $CAP_TMP)"
 }
 
